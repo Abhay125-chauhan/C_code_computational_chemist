@@ -1,0 +1,19 @@
+// This code is provide the calculation of fabonacci Series 
+#include <stdio.h>
+
+int main() {
+    int first_term = 0, second_term = 1, next_term, n;
+    printf("Enter the number of terms: ");
+    scanf("%d", &n);
+
+    printf("Fibonacci Series: %d, %d", first_term, second_term);
+
+    for (int i = 2; i < n; ++i) {
+        next_term = first_term + second_term;
+        printf(", %d", next_term);
+        first_term = second_term;
+        second_term = next_term;
+    }
+    printf("\n");
+    return 0;
+}
