@@ -1,0 +1,83 @@
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#define NP 559   // NUMBER OF ATOMS
+#define NFRAMES 4001   // NUMBER OF FRAMES
+#define NANO 13        // NUMBER OF NANOPARTICLES
+#define SURFACE 42     // NUMBER OF SURFACE ATOMS PER NANOPARTICLE
+#define box 9.91       // Box size (for PBC)
+int main() {
+    float positions[NP][3];  // Atom positions (x, y, z)
+    char atom[10];           // Atom name (unused, just for reading)
+    char atomtype[5];        // Atom type (unused, just for reading)
+    int atomnumber;          // Atom number (unused, just for reading)
+    int ngr = 0;             // Frame counter
+    float xr, yr, zr, r;     // Variables for distance calculation
+    // Open the GRO file for reading
+    FILE *file = fopen("frames.gro", "r");
+    if (file == NULL) {
+        fprintf(stderr, "Error opening file.\n");
+        return 1;
+    }
+    // Files for storing distance data for each nanoparticle
+    FILE *outFiles[NANO];
+    for (int i = 0; i < NANO; i++) {
+        char filename[20];
+        sprintf(filename, "dist-%d.txt", i + 1);
+        outFiles[i] = fopen(filename, "w");
+        if (outFiles[i] == NULL) {
+            fprintf(stderr, "Error opening output file %s.\n", filename);
+            return 1;
+        }
+    }
+    char line[1000]; // Reading buffer for each line
+    while (ngr < NFRAMES && fgets(line, sizeof(line), file) != NULL) {
+        // Skip the first line which contains the frame header (e.g. time)
+        if (fgets(line, sizeof(line), file) == NULL) break;
+        // Read atom positions for this frame
+        for (int i = 0; i < NP; i++) {
+            if (fgets(line, sizeof(line), file) != NULL) {
+                sscanf(line, "%s %s %d %f %f %f", atom, atomtype, &atomnumber,
+                       &positions[i][0], &positions[i][1], &positions[i][2]);
+            } else {
+                break;
+            }
+        }
+        // Skip the last line which contains box dimensions (not needed)
+        if (fgets(line, sizeof(line), file) == NULL) break;
+        // For each nanoparticle
+        for (int np_idx = 0; np_idx < NANO; np_idx++) {
+            float avg_dist = 0.0;
+            // Central atom is the first atom of each nanoparticle (43 atoms per nanoparticle)
+            int central_atom_idx = np_idx * 43;
+            float central_x = positions[central_atom_idx][0];
+            float central_y = positions[central_atom_idx][1];
+            float central_z = positions[central_atom_idx][2];
+            // Calculate distance from central atom to each of the 42 surface atoms
+            for (int i = 1; i <= SURFACE; i++) {
+                int surface_atom_idx = central_atom_idx + i;
+                float dx = positions[central_atom_idx][0] - positions[surface_atom_idx][0];
+                float dy = positions[central_atom_idx][1] - positions[surface_atom_idx][1];
+                float dz = positions[central_atom_idx][2] - positions[surface_atom_idx][2];
+                // Apply periodic boundary conditions (PBC)
+                dx -= box * round(dx / box);
+                dy -= box * round(dy / box);
+                dz -= box * round(dz / box);
+                // Calculate the distance
+                r = sqrt(dx * dx + dy * dy + dz * dz);
+                avg_dist += r;
+            }
+            // Calculate average distance for this nanoparticle
+            avg_dist /= SURFACE;
+            // Write the average distance for this nanoparticle in the current frame to the file
+            fprintf(outFiles[np_idx], "%f\n", avg_dist);
+        }
+        ngr++;  // Increment frame counter
+    }
+    // Close all output files
+    for (int i = 0; i < NANO; i++) {
+        fclose(outFiles[i]);
+    }
+    fclose(file);
+    return 0;
+}
