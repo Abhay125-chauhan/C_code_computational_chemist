@@ -1,0 +1,138 @@
+orca install file
+
+#orca how to install 
+For ORCA version 4-6
+Tested to work under Ubuntu LTS 22.04, Debian 12 and WSL-Debian under Windows 11 with ORCA version up to 6.0.0 with OpenMPI 4.1.6, with modern AMD or Intel x64 processors.
+
+I tried to use the static-linked binary version but it crashed into a segfault without any meaningful error message, so we have to use the shared-library version here.
+
+Take note of the version number of the ORCA package you want to use, along with the OpenMPI version against which it is compiled.
+
+Make sure you have sudo privileges. Download and install openmpi-4.1.6 (or any other specific version ORCA is compiled against) from source by running the following commands sequentially (Change the directory names as necessary):
+
+ cd /tmp
+ wget https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.6.tar.gz
+ tar xvf openmpi-4.1.6.tar.gz
+ cd openmpi-4.1.6
+ ./configure --prefix=/opt/orca-6.0.0/openmpi-4.1.6
+ make all
+ mkdir -p /opt/orca-6.0.0
+ sudo make install
+While it is compiling, open your web browser and go to https://orcaforum.kofo.mpg.de/app.php/dlext/ (login required) to download ORCA version x.y.z, choosing the shared-library version linked against the above version of OpenMPI (e.g. "ORCA 6.0.0, Linux, x86-64 (AVX2), .tar.xz Archive Dynamically linked serial & parallel binaries linked against OpenMPI 4.1.6. Requires AVX2 instruction set!"). Extract it to the desired installation directory. (Here I use /opt/orca-6.0.0.)
+
+ cd /opt
+ sudo tar xvf ~/Downloads/orca_6_0_0*.tar.xz
+ sudo mv orca_6_0_0* orca-6.0.0
+Download the orcainit[4|5|6] script from this repo to your computer and put it wherever appropriate (I'd just put it in the same directory as ORCA). Edit the initial part of the script, such that the $orca_path and openmpi_path variables contain the correct paths for your ORCA and OpenMPI installations, for example:
+
+ orca_ver=6.0.0
+ openmpi_ver=4.1.6
+ orca_path=/opt/orca-${orca_ver}
+ openmpi_path=${orca_path}/openmpi-${openmpi_ver}
+Source (in a bash, zsh, fish, etc. shell) the script.
+
+ source /opt/orca-6.0.0/orcainit6
+Test provided sample ORCA jobs. Make sure it works with openmpi parallelism.
+
+ cd test
+ orca test1-1proc.orca test2-2procs.orca
+Now you are ready to go. Just remember to source orcainit[4|5|6] again each time you start a new shell. Note that, like the example above, you can give it multiple input files. They will be run sequentially.
+
+ orca [your job file 1] [your job file 2] ...
+#add to bashrc 
+# ORCA + OpenMPI environment setup
+orca_ver=6.0.0
+openmpi_ver=4.1.6
+orca_path="/opt/orca-${orca_ver}/orca_6_0_0_shared_openmpi416"
+openmpi_path="/opt/orca-${orca_ver}/openmpi-${openmpi_ver}"
+
+# Check ORCA binary
+if [[ ! -x "${orca_path}/orca" ]]; then
+  echo "ORCA not found at ${orca_path}/orca" >&2
+else
+  # Check OpenMPI path
+  if [[ ! -d "${openmpi_path}/lib" ]]; then
+    echo "OpenMPI ${openmpi_ver} not found at ${openmpi_path}/lib" >&2
+  else
+    # Add to PATH and LD_LIBRARY_PATH
+    if [[ ":$PATH:" != *":${orca_path}:"* ]]; then
+      export PATH="${orca_path}:${PATH}"
+    fi
+    if [[ ":$PATH:" != *":${openmpi_path}/bin:"* ]]; then
+      export PATH="${openmpi_path}/bin:${PATH}"
+    fi
+    if [[ ":$LD_LIBRARY_PATH:" != *":${orca_path}:"* ]]; then
+      export LD_LIBRARY_PATH="${orca_path}:${LD_LIBRARY_PATH}"
+    fi
+    if [[ ":$LD_LIBRARY_PATH:" != *":${openmpi_path}/lib:"* ]]; then
+      export LD_LIBRARY_PATH="${openmpi_path}/lib:${LD_LIBRARY_PATH}"
+    fi
+
+    # ORCA run function
+    backup_file() {
+      if [[ -e "$1" ]]; then
+        if [[ -e "$1.bak" ]]; then
+          backup_file "$1.bak"
+        fi
+        mv "$1" "$1.bak"
+      fi
+    }
+
+    orca() {
+      for file in "$@"; do
+        backup_file "${file}.log"
+        "${orca_path}/orca" "${file}" > "${file}.log"
+      done
+    }
+  fi
+fi
+
+
+
+#orcainit6
+#!/bin/bash
+
+# Change these to your versions of software.
+orca_ver=6.0.0
+openmpi_ver=4.1.6
+orca_path="/opt/orca-${orca_ver}"
+openmpi_path="${orca_path}/openmpi-${openmpi_ver}"
+
+  
+if [[ ! -x "${orca_path}/orca" ]]; then
+  echo "ORCA not found." >&2
+  return 1
+fi
+if [[ ! -d "${openmpi_path}/lib" ]]; then
+  echo "OpenMPI "${openmpi_ver}" not installed." >&2
+  return 2
+fi
+
+backup_file() {
+	if [[ -e "${1}" ]]; then
+		if [[ -e "${1}.bak" ]]; then
+			backup_file "${1}.bak"
+		fi
+		mv "${1}" "${1}.bak"
+	fi
+}
+
+orca() {
+  for file1 in "$@"; do	
+	backup_file "${file1}.log"
+    "${orca_path}/orca" "${file1}" > "${file1}.log"; 
+  done; 
+}
+
+if [[ ! ${PATH} =~ ${orca_path} ]]; then
+  export PATH="${orca_path}"${PATH:+":$PATH"}
+fi
+if [[ ! ${PATH} =~ ${openmpi_path} ]]; then
+  export PATH="${openmpi_path}/bin"${PATH:+":$PATH"}
+fi
+if [[ ! ${LD_LIBRARY_PATH} =~ ${orca_path} ]]; then  
+  export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+"${LD_LIBRARY_PATH}:"}${orca_path}
+fi
+if [[ ! ${LD_LIBRARY_PATH} =~ "${openmpi_path}/lib" ]]; then  
+  export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+"${LD_LIBRARY_PATH}:"}"${openmpi_path}/lib"
+fi
